@@ -1,0 +1,2 @@
+class CodeDiverged(Exception):
+    pass
