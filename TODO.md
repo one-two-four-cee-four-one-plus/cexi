@@ -1,12 +1,6 @@
-# Cee EXtensions Interpolation
-
-[example usage](https://github.com/one-two-four-cee-four-one-plus/cexi/tree/main/examples/basic)
-
-### WIP
-
 1st priority
-- [ ] exceptions
-- [ ] mixing functions
+- [x] exceptions
+- [x] mixing functions
 - [ ] dynamic build & import
 
 2nd

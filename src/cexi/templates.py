@@ -1,54 +1,131 @@
 from string import Template
 
-MANDATORY_HEADER =\
-'''
+
+def template(text):
+    return Template(text.strip())
+
+
+MANDATORY_HEADER = """
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
-'''.strip()
+""".strip()
 
-METHOD_TABLE =\
-Template('''
-static PyMethodDef $name[] = {
-    $methods,
+
+ERROR = template("static PyObject* ${error};")
+
+
+FUNCTION = template(
+    """
+${prefix} ${return_type}
+${name}(${parameters})
+{
+    ${body}
+}
+"""
+)
+
+CAPTURE = template(
+    """
+${decl}
+static PyObject*
+${name}(PyObject *__whatever, PyObject *args)
+{
+    if (${capture}) {
+        Py_INCREF(Py_None);
+        return Py_None;
+    };
+
+    PyObject* temp;
+
+    if (!PyArg_ParseTuple(args, "O:set_callback", &temp)) {
+        PyErr_SetString(PyExc_ImportError, "cannot capture python function");
+        return NULL;
+    }
+
+    if (!PyCallable_Check(temp)) {
+        PyErr_SetString(PyExc_TypeError, "parameter must be callable");
+        return NULL;
+    };
+
+    Py_XINCREF(temp);
+    ${capture} = temp;
+
+    Py_INCREF(Py_None);
+    return Py_None;
+};
+"""
+)
+
+REVERSE = template(
+    """
+int
+${name}(${in_decl}, ${out_decl}) {
+    if (!${capture})
+        return 1;
+
+    PyObject *result = NULL;
+
+    if (!(result = PyObject_CallFunction(${capture}, "${in_format}", ${in_params})))
+        return 2;
+
+    if (!PyArg_ParseTuple(result, "${out_format}", ${out_params}))
+        return 3;
+
+    return 0;
+}
+"""
+)
+
+
+METHOD_TABLE = template(
+    """
+static PyMethodDef ${name}[] = {
+    ${methods},
     {NULL, NULL, 0, NULL}
 };
-'''.strip())
+"""
+)
 
-FUNCTION =\
-Template('''
-$prefix $return_type $name($parameters)
-{
-    $body
-}
-'''.strip())
 
-MODULE_DEFINITION =\
-Template('''
+MODULE_DEFINITION = template(
+    """
 static struct PyModuleDef $module = {
     PyModuleDef_HEAD_INIT,
-    "$name",
+    "${name}",
     NULL,
     -1,
-    $method_table
+    ${method_table}
 };
-'''.strip())
+"""
+)
 
-MODULE_INIT =\
-Template('''
+
+MODULE_INIT = template(
+    """
 PyMODINIT_FUNC
-PyInit_$name(void)
+PyInit_${name}(void)
 {
-    PyObject *m;
-    m = PyModule_Create(&$module);
-    return m;
+    PyObject* ${name};
+    $name = PyModule_Create(&${module});
+    $error = PyErr_NewException("${name}.error", NULL, NULL);
+    Py_XINCREF(${error});
+    if (PyModule_AddObject(${name}, "error", ${error}) < 0) {
+        Py_XDECREF(${error});
+        Py_CLEAR(${error});
+        Py_DECREF(${name});
+        return NULL;
+    };
+    return ${name};
 };
-'''.strip())
+"""
+)
 
 
-MODULE_CODE =\
-Template('''
+MODULE_CODE = template(
+    """
 $header
 
+$error
 
 $code
 
@@ -58,4 +135,5 @@ $method_table
 $module_definition
 
 $module_init
-'''.strip())
+"""
+)
