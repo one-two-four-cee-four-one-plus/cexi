@@ -3,6 +3,15 @@ from textwrap import indent
 from importlib import import_module
 from pathlib import Path
 
+
+from tempfile import TemporaryDirectory
+from sys import platform
+from os import name
+from distutils.ccompiler import get_default_compiler
+from importlib.machinery import ExtensionFileLoader
+from sysconfig import get_config_var
+
+
 from . import templates
 from . import code
 from .constants import TAB
@@ -16,6 +25,8 @@ class Ext:
         self.__error_name = f"{self.__capitalized}Error"
         self.__method_table_name = f"{self.__capitalized}Methods"
         self.__module_name = f"{self.name}module"
+        self.__module = None
+        self.__customize_cc = None
 
     ###############
     # API section #
@@ -49,6 +60,10 @@ class Ext:
         self.code.append(capture)
         self.code.append(reverse)
         return reverse.binding()
+
+    def custom_compile(self, cc_func):
+        self.__customize_cc = cc_func
+        return cc_func
 
     ###########################
     # code generation section #
@@ -106,21 +121,45 @@ class Ext:
     # integration section #
     #######################
 
-    @cached_property
-    def __revision(self):
-        return hash(self.__code)
+    def oneshot(self):
+        if self.__module:
+            return self
 
-    def __source_path(self, to_dir=None):
-        path = Path(to_dir)
-        if not path.is_dir():
-            path.mkdir(parents=True, exist_ok=True)
-        path /= f"{self.name}module"
-        return path.with_suffix(".c")
+        with TemporaryDirectory() as tempo:
+            path = Path(tempo) / self.name
+            with path.with_suffix(".c").open(mode="wt") as fd:
 
-    def as_extension(self, src_dir):
-        from distutils.core import Extension
+                fd.write(self.__code)
+                fd.flush()
 
-        path = self.__source_path(to_dir=src_dir)
-        with open(path, "wt") as fd:
-            fd.write(self.__code)
-        return Extension(self.name, sources=[str(path)])
+                assert get_default_compiler(name, platform) == "unix"
+                from distutils.unixccompiler import UnixCCompiler
+
+                extra_preargs = ["-fPIC"]
+                extra_postargs = []
+
+                cc = UnixCCompiler()
+                cc.add_include_dir(get_config_var("INCLUDEPY"))
+
+                if self.__customize_cc:
+                    self.__customize_cc(cc, extra_preargs, extra_postargs)
+
+                os = cc.compile(
+                    [fd.name],
+                    extra_preargs=extra_preargs,
+                    extra_postargs=extra_postargs,
+                    output_dir=tempo,
+                )
+                cc.link_shared_lib(os, self.name, output_dir=tempo)
+                libfile = cc.library_filename(
+                    self.name, lib_type="shared", output_dir=tempo
+                )
+                loader = ExtensionFileLoader(self.name, libfile)
+                self.__module = loader.load_module()
+                return self
+
+    def __enter__(self):
+        self.oneshot()
+
+    def __exit__(self, *args):
+        return False

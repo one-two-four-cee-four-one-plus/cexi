@@ -1,7 +1,7 @@
 1st priority
 - [x] exceptions
 - [x] mixing functions
-- [ ] dynamic build & import
+- [x] dynamic build & import
 
 2nd
 - [ ] method table flags
