@@ -1,6 +1,10 @@
 from itertools import product
 from operator import itemgetter
 from string import ascii_lowercase
+from collections import OrderedDict
+
+from .typing import TypeTable
+from . import templates
 
 
 def _generate_names(count, exclude):
@@ -34,8 +38,8 @@ def mapping(d):
     return func
 
 
-def zip_decl(types, names):
-    return ', '.join(f'{t} {n}' for t, n in zip(types, names))
+def zip_decl(types, names, delim=', '):
+    return delim.join(f'{t} {n}' for t, n in zip(types, names))
 
 
 def uses(decos):
@@ -50,3 +54,27 @@ def uses(decos):
         outer = deco.use(outer)
 
     return outer
+
+
+class Unpack:
+    map = mapping(TypeTable.py_to_cee)
+    format = mapping(TypeTable.py_to_format)
+
+    def __init__(self, **kwargs):
+        self.mapping = OrderedDict(kwargs.items())
+
+    def translate(self, name):
+        types = self.map(self.mapping.values())
+        names = self.mapping.keys()
+        decl = zip_decl(types, names, delim='; ')
+        format = ''.join(self.format(self.mapping.values()))
+        names = ', '.join(f'&{n}' for n in names)
+        return templates.UNPACK.substitute(
+            decl=f'{decl};',
+            name=name,
+            names=names,
+            format=format
+        )
+
+
+to = Unpack

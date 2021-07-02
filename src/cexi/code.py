@@ -1,11 +1,14 @@
 from functools import cached_property
-from inspect import signature
+from inspect import signature, Signature
 from collections import OrderedDict
 
 from . import binding
 from . import templates
-from .utils import generate_names, mapping, zip_decl
+from .utils import generate_names, mapping, zip_decl, Unpack
 from .typing import TypeTable, P
+
+
+empty = Signature.empty
 
 
 class CodeTemplate:
@@ -36,6 +39,7 @@ class CodeBlock(CodeTemplate):
 class CeeCallable(CodeBlock):
     prefix = ""
     template = templates.FUNCTION
+    default_return = int
     map = mapping(TypeTable.py_to_cee)
 
     def __init__(self, obj, module):
@@ -49,6 +53,10 @@ class CeeCallable(CodeBlock):
                 self.returns = tuple(self.returns)
             except TypeError:
                 self.returns = (self.returns,)
+
+        if len(self.returns) == 1 and self.returns[0] is empty:
+            self.returns = [self.default_return]
+
         self.params = OrderedDict(
             (k, v.annotation) for k, v in self.signature.parameters.items()
         )
@@ -69,6 +77,7 @@ class CeeCallable(CodeBlock):
 
 class PyCallable(CeeCallable):
     prefix = "static"
+    default_return = object
 
     def __init__(self, *args, doc=None, flags=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -89,6 +98,28 @@ class PyCallable(CeeCallable):
 
     def binding(self):
         return binding.Binding(self.module, self)
+
+
+class UnpackedPyCallable(PyCallable):
+    def get_context(self):
+        assert len(self.returns) == 1
+        types = []
+        prefix = ''
+        for name, type in self.params.items():
+            if isinstance(type, Unpack):
+                prefix += type.translate(name)
+                types.append(object)
+            else:
+                types.append(type)
+        types = self.map(types)
+        names = self.params.keys()
+        return dict(
+            prefix=self.prefix,
+            return_type=self.map(self.returns)[0],
+            name=self.name,
+            parameters=zip_decl(types, names),
+            body=(prefix + '\n    ' + self.body).strip(),
+        )
 
 
 class Capture(PyCallable):

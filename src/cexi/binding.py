@@ -43,34 +43,12 @@ class ReverseBinding:
         return obj(*args, **kwargs)
 
     def __getattribute__(self, attr):
-        def use(self):
+        if attr == 'use' and not object.__getattribute__(self, "_ReverseBinding__captured"):
             def closure():
-                if not object.__getattribute__(self, "_ReverseBinding__captured"):
-                    obj = object.__getattribute__(self, "_ReverseBinding__obj")
-                    capture = object.__getattribute__(self, "_ReverseBinding__capture")
-                    try:
-                        module = import_module(capture.module.name)
-                        getattr(module, capture.capture)(ensure_tuple(obj))
-                        setattr(self, "_ReverseBinding__captured", True)
-                    except (ImportError, AttributeError):
-                        pass
-
+                obj = object.__getattribute__(self, "_ReverseBinding__obj")
+                capture = object.__getattribute__(self, "_ReverseBinding__capture")
+                module = import_module(capture.module.name)
+                getattr(module, capture.capture)(ensure_tuple(obj))
+                setattr(self, "_ReverseBinding__captured", True)
             return closure
-
-        use = use(self)
-
-        if attr == "use":
-            def outer(f=None):
-
-                if f is None:
-                    use()
-                    return
-
-                def inner(*args, **kwargs):
-                    use()
-                    return f(*args, **kwargs)
-
-                return inner
-            return outer
-
         return object.__getattribute__(self, attr)

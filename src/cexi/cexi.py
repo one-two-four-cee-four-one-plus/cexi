@@ -2,7 +2,7 @@ from functools import cached_property
 from textwrap import indent
 from importlib import import_module
 from pathlib import Path
-
+from uuid import uuid4
 
 from tempfile import TemporaryDirectory
 from sys import platform
@@ -11,16 +11,16 @@ from distutils.ccompiler import get_default_compiler
 from importlib.machinery import ExtensionFileLoader
 from sysconfig import get_config_var
 
-
 from . import templates
 from . import code
 from .constants import TAB
 
 
-class Ext:
-    def __init__(self, name, flags=None):
-        self.name = name
+class Extension:
+    def __init__(self, name=None, flags=None):
+        self.name = name or f'cexi_{str(uuid4()).replace("-", "")}'
         self.code = []
+        self.reverses = []
         self.__capitalized = self.name.capitalize()
         self.__error_name = f"{self.__capitalized}Error"
         self.__method_table_name = f"{self.__capitalized}Methods"
@@ -50,6 +50,11 @@ class Ext:
             return closure(obj)
         return closure
 
+    def unpacked(self, obj):
+        obj = code.UnpackedPyCallable(obj, self)
+        self.code.append(obj)
+        return obj.binding()
+
     def cee(self, obj):
         obj = code.CeeCallable(obj, self)
         self.code.append(obj)
@@ -59,9 +64,11 @@ class Ext:
         reverse = code.Reverse(obj, self, capture)
         self.code.append(capture)
         self.code.append(reverse)
-        return reverse.binding()
+        binding = reverse.binding()
+        self.reverses.append(binding)
+        return binding
 
-    def custom_compile(self, cc_func):
+    def compile_with(self, cc_func):
         self.__customize_cc = cc_func
         return cc_func
 
@@ -148,6 +155,7 @@ class Ext:
                     [fd.name],
                     extra_preargs=extra_preargs,
                     extra_postargs=extra_postargs,
+                    macros=[('CEXI_CODE_REVISION', f'"{self.__cexi_rev}"')],
                     output_dir=tempo,
                 )
                 cc.link_shared_lib(os, self.name, output_dir=tempo)
@@ -156,7 +164,17 @@ class Ext:
                 )
                 loader = ExtensionFileLoader(self.name, libfile)
                 self.__module = loader.load_module()
+                for reverse in self.reverses:
+                    reverse.use()
                 return self
+
+    @cached_property
+    def __cexi_rev(self):
+        return str(hash(self.__code))
+
+    @cached_property
+    def __cee_rev(self):
+        return self.__module.cexi_code_revision
 
     def __enter__(self):
         self.oneshot()

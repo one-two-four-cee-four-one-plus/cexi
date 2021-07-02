@@ -1,3 +1,3 @@
-from .cexi import Ext  # noqa
+from .cexi import Extension  # noqa
 from .typing import P, PP, C, CP, P2C  # noqa
-from .utils import uses  # noqa
+from .utils import uses, to  # noqa

@@ -37,7 +37,7 @@ class TypeTable:
         (float,                   'float',     'float',               'f'),
         (Literal('double'),       'double',    'double',              'd'),
         (complex,                 'complex',    'Py_complex',         'D'),
-        (empty,                   'void',      'void',                None),
+        (Literal('void'),         'void',      'void',                None),
 
         # long
         (Literal('long'),         'long',      'long',                'l'),
@@ -56,6 +56,7 @@ class TypeTable:
         (bin,                     'bin',        'Py_buffer',           'y*'),
         (bytearray,               'bytearray',  'PyByteArrayObject *', 'Y'),
         (object,                  'py',         'PyObject*',           'O'),
+        (empty,                   'py',         'PyObject*',           'O'),
         (None,                    'none',       'Py_None',             None)
     ))
 
