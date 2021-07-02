@@ -2,7 +2,7 @@ from functools import cached_property
 from inspect import signature, Signature
 from collections import OrderedDict
 
-from . import binding
+from . import proxy
 from . import templates
 from .utils import generate_names, mapping, zip_decl, Unpack
 from .typing import TypeTable, P
@@ -96,15 +96,15 @@ class PyCallable(CeeCallable):
     def table_entry(self):
         return f'{{"{self.name}", {self.name}, {self.flags}, {self.doc}}}'
 
-    def binding(self):
-        return binding.Binding(self.module, self)
+    def proxy(self):
+        return proxy.Proxy(self.module, self)
 
 
 class UnpackedPyCallable(PyCallable):
     def get_context(self):
         assert len(self.returns) == 1
         types = []
-        prefix = ''
+        prefix = ""
         for name, type in self.params.items():
             if isinstance(type, Unpack):
                 prefix += type.translate(name)
@@ -118,7 +118,7 @@ class UnpackedPyCallable(PyCallable):
             return_type=self.map(self.returns)[0],
             name=self.name,
             parameters=zip_decl(types, names),
-            body=(prefix + '\n    ' + self.body).strip(),
+            body=(prefix + "\n    " + self.body).strip(),
         )
 
 
@@ -167,5 +167,5 @@ class Reverse(CeeCallable):
             out_params=", ".join(out_names),
         )
 
-    def binding(self):
-        return binding.ReverseBinding(self.module, self.obj, self.capture)
+    def proxy(self):
+        return proxy.ReverseProxy(self.module, self.obj, self.capture)

@@ -14,22 +14,27 @@ MANDATORY_HEADER = """
 ERROR = template("static PyObject* ${error};")
 
 
-UNPACK = template("""
+UNPACK = template(
+    """
     ${decl}
     if (!PyArg_ParseTuple(${name}, "${format}", ${names})) {
         return NULL;
     };
-""")
+"""
+)
 
-FUNCTION = template("""
+FUNCTION = template(
+    """
 ${prefix} ${return_type}
 ${name}(${parameters})
 {
     ${body}
 }
-""")
+"""
+)
 
-CAPTURE = template("""
+CAPTURE = template(
+    """
 ${decl}
 static PyObject*
 ${name}(PyObject *__whatever, PyObject *args)
@@ -57,9 +62,11 @@ ${name}(PyObject *__whatever, PyObject *args)
     Py_INCREF(Py_None);
     return Py_None;
 };
-""")
+"""
+)
 
-REVERSE = template("""
+REVERSE = template(
+    """
 int
 ${name}(${in_decl}, ${out_decl}) {
     if (!${capture})
@@ -75,18 +82,22 @@ ${name}(${in_decl}, ${out_decl}) {
 
     return 0;
 }
-""")
+"""
+)
 
 
-METHOD_TABLE = template("""
+METHOD_TABLE = template(
+    """
 static PyMethodDef ${name}[] = {
     ${methods},
     {NULL, NULL, 0, NULL}
 };
-""")
+"""
+)
 
 
-MODULE_DEFINITION = template("""
+MODULE_DEFINITION = template(
+    """
 static struct PyModuleDef $module = {
     PyModuleDef_HEAD_INIT,
     "${name}",
@@ -94,10 +105,12 @@ static struct PyModuleDef $module = {
     -1,
     ${method_table}
 };
-""")
+"""
+)
 
 
-MODULE_INIT = template("""
+MODULE_INIT = template(
+    """
 PyMODINIT_FUNC
 PyInit_${name}(void)
 {
@@ -111,20 +124,13 @@ PyInit_${name}(void)
         Py_DECREF(${name});
         return NULL;
     };
-
-    PyObject* cexi_code_revision = Py_BuildValue("s", CEXI_CODE_REVISION);
-    Py_XINCREF(cexi_code_revision);
-    if (PyModule_AddObject(${name}, "cexi_code_revision", cexi_code_revision) < 0) {
-        Py_XDECREF(cexi_code_revision);
-        Py_CLEAR(cexi_code_revision);
-        Py_DECREF(${name});
-        return NULL;
-    };
     return ${name};
 };
-""")
+"""
+)
 
-MODULE_CODE = template("""
+MODULE_CODE = template(
+    """
 $header
 
 $error
@@ -137,4 +143,5 @@ $method_table
 $module_definition
 
 $module_init
-""")
+"""
+)

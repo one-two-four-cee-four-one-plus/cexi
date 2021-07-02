@@ -4,8 +4,9 @@
 - [x] dynamic build & import
 
 2nd
+- [ ] background compile, use default meanwhile
 - [ ] method table flags
-- [ ] new types
+- [ ] new types & instances of type table
 - [ ] classes
 
 3rd priority

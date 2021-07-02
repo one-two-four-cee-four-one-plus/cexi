@@ -3,6 +3,9 @@ from textwrap import indent
 from importlib import import_module
 from pathlib import Path
 from uuid import uuid4
+from contextlib import contextmanager
+from distutils.core import setup, Extension as _Extension
+from inspect import signature
 
 from tempfile import TemporaryDirectory
 from sys import platform
@@ -12,13 +15,18 @@ from importlib.machinery import ExtensionFileLoader
 from sysconfig import get_config_var
 
 from . import templates
-from . import code
+from . import wrap
 from .constants import TAB
+from .utils import Unpack
 
 
 class Extension:
-    def __init__(self, name=None, flags=None):
-        self.name = name or f'cexi_{str(uuid4()).replace("-", "")}'
+    def __init__(self, name=None, *, flags=None):
+        self.name_set = bool(name)
+        if self.name_set:
+            self.name = name
+        else:
+            self.name = f'cexi_{str(uuid4()).replace("-", "")}'
         self.code = []
         self.reverses = []
         self.__capitalized = self.name.capitalize()
@@ -33,40 +41,34 @@ class Extension:
     ###############
 
     @cached_property
-    def error(self):
+    def exception(self):
         module = import_module(self.name)
         return module.error
 
-    def block(self, obj):
-        self.code.append(code.CodeBlock(obj, self))
+    def block(self, code_block):
+        self.code.append(wrap.CodeBlock(code_block, self))
 
-    def py(self, obj=None, doc=None, flags=None):
-        def closure(obj):
-            obj = code.PyCallable(obj, self, doc=doc, flags=flags)
-            self.code.append(obj)
-            return obj.binding()
+    def py(self, fun):
+        params = signature(fun).parameters.values()
+        if any(isinstance(p.annotation, Unpack) for p in params):
+            cexi_fun = wrap.UnpackedPyCallable(fun, self)
+        else:
+            cexi_fun = wrap.PyCallable(fun, self)
+        self.code.append(cexi_fun)
+        return cexi_fun.proxy()
 
-        if callable(obj):
-            return closure(obj)
-        return closure
+    def cee(self, fun):
+        cexi_fun = wrap.CeeCallable(fun, self)
+        self.code.append(cexi_fun)
 
-    def unpacked(self, obj):
-        obj = code.UnpackedPyCallable(obj, self)
-        self.code.append(obj)
-        return obj.binding()
-
-    def cee(self, obj):
-        obj = code.CeeCallable(obj, self)
-        self.code.append(obj)
-
-    def pyc(self, obj):
-        capture = code.Capture(obj, self)
-        reverse = code.Reverse(obj, self, capture)
+    def pyc(self, fun):
+        capture = wrap.Capture(fun, self)
+        reverse = wrap.Reverse(fun, self, capture)
         self.code.append(capture)
         self.code.append(reverse)
-        binding = reverse.binding()
-        self.reverses.append(binding)
-        return binding
+        proxy = reverse.proxy()
+        self.reverses.append(proxy)
+        return proxy
 
     def compile_with(self, cc_func):
         self.__customize_cc = cc_func
@@ -86,13 +88,13 @@ class Extension:
 
     @cached_property
     def __module_code(self):
-        return "\n\n\n".join(code.translate() for code in self.code)
+        return "\n\n\n".join(wrap.translate() for wrap in self.code)
 
     @cached_property
     def __method_table(self):
         methods = ",\n".join(
             obj.table_entry for obj in self.code
-            if isinstance(obj, code.PyCallable)
+            if isinstance(obj, wrap.PyCallable)
         )
         methods = indent(methods, TAB).lstrip()
         return templates.METHOD_TABLE.substitute(
@@ -128,13 +130,13 @@ class Extension:
     # integration section #
     #######################
 
-    def oneshot(self):
+    def ensure(self):
         if self.__module:
             return self
 
         with TemporaryDirectory() as tempo:
-            path = Path(tempo) / self.name
-            with path.with_suffix(".c").open(mode="wt") as fd:
+            path = (Path(tempo) / self.name).with_suffix(".c")
+            with path.open(mode="wt") as fd:
 
                 fd.write(self.__code)
                 fd.flush()
@@ -155,29 +157,33 @@ class Extension:
                     [fd.name],
                     extra_preargs=extra_preargs,
                     extra_postargs=extra_postargs,
-                    macros=[('CEXI_CODE_REVISION', f'"{self.__cexi_rev}"')],
                     output_dir=tempo,
                 )
                 cc.link_shared_lib(os, self.name, output_dir=tempo)
                 libfile = cc.library_filename(
                     self.name, lib_type="shared", output_dir=tempo
                 )
+
                 loader = ExtensionFileLoader(self.name, libfile)
                 self.__module = loader.load_module()
                 for reverse in self.reverses:
                     reverse.use()
-                return self
 
-    @cached_property
-    def __cexi_rev(self):
-        return str(hash(self.__code))
+    @property
+    @contextmanager
+    def ensured(self):
+        yield self.ensure()
 
-    @cached_property
-    def __cee_rev(self):
-        return self.__module.cexi_code_revision
+    def setup(self):
+        assert self.name_set
+        with TemporaryDirectory() as tempo:
+            path = (Path(tempo) / self.name).with_suffix(".c")
+            with path.open(mode="wt") as fd:
 
-    def __enter__(self):
-        self.oneshot()
+                fd.write(self.__code)
+                fd.flush()
 
-    def __exit__(self, *args):
-        return False
+                return setup(
+                    name=f'cexi_{self.name}_pkg',
+                    ext_modules=[_Extension(self.name, sources=[fd.name])]
+                )
