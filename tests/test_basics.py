@@ -11,7 +11,7 @@ def test_spam():
         return PyLong_FromLong(sts);
         """
 
-    @spam.compile_with
+    @spam.make
     def check_python_lib(cc, extra_preargs, extra_postargs):
         assert '-fPIC' in extra_preargs
         assert extra_postargs == []

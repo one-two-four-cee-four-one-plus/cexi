@@ -56,6 +56,12 @@ def uses(decos):
     return outer
 
 
+def define(fun):
+    from .core import DynamicExtension
+    ext = DynamicExtension()
+    return ext.define(fun)
+
+
 class Unpack:
     map = mapping(TypeTable.py_to_cee)
     format = mapping(TypeTable.py_to_format)

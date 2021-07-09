@@ -99,18 +99,20 @@ class PyCallable(CeeCallable):
     def proxy(self):
         return proxy.Proxy(self.module, self)
 
-
-class UnpackedPyCallable(PyCallable):
     def get_context(self):
         assert len(self.returns) == 1
-        types = []
-        prefix = ""
-        for name, type in self.params.items():
-            if isinstance(type, Unpack):
-                prefix += type.translate(name)
-                types.append(object)
+        if len(self.params) == 2:
+            (_, (_, args)) = self.params.items()
+            if isinstance(args, Unpack):
+                return self.unpacked_two()
             else:
-                types.append(type)
+                return super().get_context()
+        raise NotImplementedError()
+
+    def unpacked_two(self):
+        types = [object, object]
+        (_, (name, value)) = self.params.items()
+        prefix = value.translate(name)
         types = self.map(types)
         names = self.params.keys()
         return dict(

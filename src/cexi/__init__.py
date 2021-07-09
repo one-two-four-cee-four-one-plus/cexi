@@ -1,3 +1,3 @@
-from .core import Extension  # noqa
+from .core import Extension, SetupExtension  # noqa
 from .typing import P, PP, C, CP, P2C  # noqa
-from .utils import uses, to  # noqa
+from .utils import uses, to, define  # noqa

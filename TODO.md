@@ -4,8 +4,9 @@
 - [x] dynamic build & import
 
 2nd
-- [ ] background compile, use default meanwhile
-- [ ] method table flags
+- [x] background compile, use default meanwhile
+- [ ] incremental compile
+- [ ] cover all argument passing styles
 - [ ] new types & instances of type table
 - [ ] classes
 

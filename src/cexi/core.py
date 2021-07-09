@@ -5,36 +5,34 @@ from pathlib import Path
 from uuid import uuid4
 from contextlib import contextmanager
 from distutils.core import setup, Extension as _Extension
-from inspect import signature
-
 from tempfile import TemporaryDirectory
 from sys import platform
 from os import name
 from distutils.ccompiler import get_default_compiler
 from importlib.machinery import ExtensionFileLoader
 from sysconfig import get_config_var
+from multiprocessing import Queue, Process, Event
+from pathlib import Path
+from queue import Empty
 
 from . import templates
 from . import wrap
 from .constants import TAB
-from .utils import Unpack
+from .exceptions import TooLate, BackgroundCompileError
+from .proxy import DynamicProxy
 
 
 class Extension:
-    def __init__(self, name=None, *, flags=None):
-        self.name_set = bool(name)
-        if self.name_set:
-            self.name = name
-        else:
-            self.name = f'cexi_{str(uuid4()).replace("-", "")}'
+    def __init__(self, name=None, *, make=None, flags=None, version=None):
+        self.name = f'cexi_{str(uuid4()).replace("-", "")}'
         self.code = []
         self.reverses = []
         self.__capitalized = self.name.capitalize()
         self.__error_name = f"{self.__capitalized}Error"
         self.__method_table_name = f"{self.__capitalized}Methods"
         self.__module_name = f"{self.name}module"
-        self.__module = None
-        self.__customize_cc = None
+        self._module = None
+        self.__customize_cc = make
 
     ###############
     # API section #
@@ -49,11 +47,7 @@ class Extension:
         self.code.append(wrap.CodeBlock(code_block, self))
 
     def py(self, fun):
-        params = signature(fun).parameters.values()
-        if any(isinstance(p.annotation, Unpack) for p in params):
-            cexi_fun = wrap.UnpackedPyCallable(fun, self)
-        else:
-            cexi_fun = wrap.PyCallable(fun, self)
+        cexi_fun = wrap.PyCallable(fun, self)
         self.code.append(cexi_fun)
         return cexi_fun.proxy()
 
@@ -70,7 +64,7 @@ class Extension:
         self.reverses.append(proxy)
         return proxy
 
-    def compile_with(self, cc_func):
+    def make(self, cc_func):
         self.__customize_cc = cc_func
         return cc_func
 
@@ -116,7 +110,7 @@ class Extension:
         )
 
     @cached_property
-    def __code(self):
+    def _code(self):
         return templates.MODULE_CODE.substitute(
             header=self.__mandatory_header,
             error=self.__error_definition,
@@ -130,60 +124,138 @@ class Extension:
     # integration section #
     #######################
 
+    @cached_property
+    def cc(self):
+        assert get_default_compiler(name, platform) == "unix"
+        from distutils.unixccompiler import UnixCCompiler
+        return UnixCCompiler()
+
+    def compile(self, fd, tempo):
+        fd.write(self._code)
+        fd.flush()
+
+        self.cc.add_include_dir(get_config_var("INCLUDEPY"))
+
+        extra_preargs = ["-fPIC"]
+        extra_postargs = []
+
+        if self.__customize_cc:
+            self.__customize_cc(self.cc, extra_preargs, extra_postargs)
+
+        os = self.cc.compile(
+            [fd.name],
+            extra_preargs=extra_preargs,
+            extra_postargs=extra_postargs,
+            output_dir=tempo,
+        )
+        self.cc.link_shared_lib(os, self.name, output_dir=tempo)
+
+    def load(self, tempo):
+        libfile = self.cc.library_filename(
+            self.name, lib_type="shared", output_dir=tempo
+        )
+        loader = ExtensionFileLoader(self.name, libfile)
+        self._module = loader.load_module()
+        for reverse in self.reverses:
+            reverse.use()
+
     def ensure(self):
-        if self.__module:
+        if self._module:
             return self
 
         with TemporaryDirectory() as tempo:
             path = (Path(tempo) / self.name).with_suffix(".c")
             with path.open(mode="wt") as fd:
-
-                fd.write(self.__code)
-                fd.flush()
-
-                assert get_default_compiler(name, platform) == "unix"
-                from distutils.unixccompiler import UnixCCompiler
-
-                extra_preargs = ["-fPIC"]
-                extra_postargs = []
-
-                cc = UnixCCompiler()
-                cc.add_include_dir(get_config_var("INCLUDEPY"))
-
-                if self.__customize_cc:
-                    self.__customize_cc(cc, extra_preargs, extra_postargs)
-
-                os = cc.compile(
-                    [fd.name],
-                    extra_preargs=extra_preargs,
-                    extra_postargs=extra_postargs,
-                    output_dir=tempo,
-                )
-                cc.link_shared_lib(os, self.name, output_dir=tempo)
-                libfile = cc.library_filename(
-                    self.name, lib_type="shared", output_dir=tempo
-                )
-
-                loader = ExtensionFileLoader(self.name, libfile)
-                self.__module = loader.load_module()
-                for reverse in self.reverses:
-                    reverse.use()
+                self.compile(fd, tempo)
+                self.load(tempo)
 
     @property
     @contextmanager
     def ensured(self):
         yield self.ensure()
 
+
+class SetupExtension(Extension):
+    def __init__(self, name, version, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.name = name
+        self.version = version
+
     def setup(self):
-        assert self.name_set
         with TemporaryDirectory() as tempo:
             path = (Path(tempo) / self.name).with_suffix(".c")
             with path.open(mode="wt") as fd:
 
-                fd.write(self.__code)
+                fd.write(self._code)
                 fd.flush()
 
                 return setup(
                     name=f'cexi_{self.name}_pkg',
+                    version=self.version,
                     ext_modules=[_Extension(self.name, sources=[fd.name])]
                 )
+
+
+class DynamicExtension(Extension):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.__event = None
+        self.__queue = None
+        self.__worker = False
+        self.__default_set = False
+        self.__cee_impl_set = False
+
+    def define(self, fun):
+        if self.__default_set:
+            raise TooLate()
+        proxy = DynamicProxy(self, fun)
+        self.__default_set = True
+        return proxy
+
+    def _py(self, fun, name):
+        if self.__cee_impl_set:
+            raise TooLate()
+        fun.__name__ = name
+        proxy = super().py(fun)
+        self.__cee_impl_set = True
+        self.__spawn()
+        return proxy
+
+    def __background(self):
+        with TemporaryDirectory() as tempo:
+            path = (Path(tempo) / self.name).with_suffix(".c")
+            with path.open(mode="wt") as fd:
+                self.compile(fd, tempo)
+                self.__queue.put_nowait(tempo)
+                self.__event.wait()
+
+    def __spawn(self):
+        if self.__worker:
+            return
+        self.__worker = Process(target=self.__background, daemon=True)
+        self.__queue = Queue(1)
+        self.__event = Event()
+        self.__worker.start()
+
+    def _check(self):
+        if self._module:
+            return True
+
+        if not self.__worker:
+            return False
+        elif self.__worker and self.__worker.exitcode not in (0, None):
+            raise BackgroundCompileError() from None
+
+        try:
+            tempo = self.__queue.get_nowait()
+            self.load(tempo)
+            self.__event.set()
+            return True
+        except Empty:
+            return False
+
+        return False
+
+
+class IncrementalExtension(Extension):
+    pass
