@@ -1,0 +1,8 @@
+[run]
+branch = true
+source = src/cexi
+omit = *migrations*, *tests*, src/cexi/__init__.py
+
+[report]
+precision = 2
+show_missing = true

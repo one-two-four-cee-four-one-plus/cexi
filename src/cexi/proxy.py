@@ -60,19 +60,21 @@ class DynamicProxy:
         self.__replacement = None
 
     def __getattribute__(self, attr):
-        if attr == 'cee':
-            py = object.__getattribute__(self, '_DynamicProxy__module')._py
-            fun = object.__getattribute__(self, '_DynamicProxy__object')
+        if attr == "cee":
+            py = object.__getattribute__(self, "_DynamicProxy__module")._py
+            fun = object.__getattribute__(self, "_DynamicProxy__object")
+
             def closure(func):
                 return py(func, fun.__name__)
+
             return closure
 
-        replacement = object.__getattribute__(self, '_DynamicProxy__replacement')
+        replacement = object.__getattribute__(self, "_DynamicProxy__replacement")
         if replacement:
             return getattr(replacement, attr)
 
-        module = object.__getattribute__(self, '_DynamicProxy__module')
-        fun = object.__getattribute__(self, '_DynamicProxy__object')
+        module = object.__getattribute__(self, "_DynamicProxy__module")
+        fun = object.__getattribute__(self, "_DynamicProxy__object")
 
         if module._check():
             module = import_module(module.name)

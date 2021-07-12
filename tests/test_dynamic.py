@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from cexi.core import DynamicExtension
 from cexi import to, define
+from cexi.exceptions import TooLate
 
 
 def test_background():
@@ -44,3 +45,6 @@ def test_define():
     assert choose(2, 3) == 2
     sleep(1.1)
     assert choose(2, 3) == 3
+
+    with pytest.raises(TooLate):
+        choose.cee(lambda: 42)

@@ -12,7 +12,6 @@ from distutils.ccompiler import get_default_compiler
 from importlib.machinery import ExtensionFileLoader
 from sysconfig import get_config_var
 from multiprocessing import Queue, Process, Event
-from pathlib import Path
 from queue import Empty
 
 from . import templates
@@ -255,7 +254,3 @@ class DynamicExtension(Extension):
             return False
 
         return False
-
-
-class IncrementalExtension(Extension):
-    pass
