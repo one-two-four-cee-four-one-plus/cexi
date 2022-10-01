@@ -2,6 +2,8 @@
 - [x] exceptions
 - [x] mixing functions
 - [x] dynamic build & import
+- [ ] capture reverse on package init, not on call
+- [ ] static global packages with different configs, extensions storing, management command
 
 2nd
 - [x] background compile, use default meanwhile

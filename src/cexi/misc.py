@@ -2,6 +2,7 @@ from itertools import product
 from operator import itemgetter
 from string import ascii_lowercase
 from collections import OrderedDict
+from uuid import uuid4
 
 from .typing import TypeTable
 from . import templates
@@ -21,11 +22,31 @@ def generate_names(count, exclude):
     return [next(names) for _ in range(count)]
 
 
+def gensym(prefix='cexi', suffix=''):
+    if prefix:
+        prefix = f'{prefix}_'
+    if suffix:
+        suffix = f'_{suffix}'
+    infix = str(uuid4()).replace("-", "")
+    return f'{prefix}{infix}{suffix}'
+
+
 def ensure_tuple(f):
     def closure(*args, **kwargs):
         ret = f(*args, **kwargs)
         return ret if isinstance(ret, tuple) else (ret,)
     return closure
+
+
+ESCAPE_SEQ_MAP = {
+    '\n': '\\n',
+}
+
+
+def escape(content):
+    if isinstance(content, str):
+        content = ''.join(ESCAPE_SEQ_MAP.get(c, c) for c in content)
+    return content
 
 
 def mapping(d):
@@ -54,12 +75,6 @@ def uses(decos):
         outer = deco.use(outer)
 
     return outer
-
-
-def define(fun):
-    from .core import DynamicExtension
-    ext = DynamicExtension()
-    return ext.define(fun)
 
 
 class Unpack:

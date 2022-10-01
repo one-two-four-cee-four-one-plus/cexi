@@ -3,7 +3,6 @@ from cexi import Extension, to
 
 def test_spam():
     spam = Extension('spam')
-    called = False
 
     @spam.py
     def spam_system(self, args: to(command=str)):
@@ -11,11 +10,6 @@ def test_spam():
         int sts = system(command);
         return PyLong_FromLong(sts);
         """
-
-    @spam.make
-    def check_python_lib(cc, extra_preargs, extra_postargs):
-        nonlocal called
-        called = True
 
     system = spam_system
     spam.ensure()
@@ -25,8 +19,6 @@ def test_spam():
 
     assert hasattr(spam, 'exception')
     assert issubclass(spam.exception, Exception)
-
-    assert called
 
 
 def test_block():

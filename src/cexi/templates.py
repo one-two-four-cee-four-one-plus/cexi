@@ -5,6 +5,22 @@ def template(text):
     return Template(text.strip())
 
 
+SETTINGS_MODULE = template("""
+from pathlib import Path
+
+name = "${name}"
+root = Path(__file__).parent.resolve()
+uuid = "${uuid}"
+""")
+
+
+NEW_EXTENSION = template("""
+from cexi import Extension
+
+${name} = Extension("${name}")
+""")
+
+
 MANDATORY_HEADER = """
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
@@ -14,24 +30,79 @@ MANDATORY_HEADER = """
 ERROR = template("static PyObject* ${error};")
 
 
+# UNPACK = template(
+#     """
+#     ${decl}
+#     if (!PyArg_ParseTuple(${name}, "${format}", ${names})) {
+#         return NULL;
+#     };
+# """
+# )
+
 UNPACK = template(
     """
     ${decl}
-    if (!PyArg_ParseTuple(${name}, "${format}", ${names})) {
+    PyArg_ParseTuple(${name}, "${format}", ${names});
+"""
+)
+
+PACK = template(
+    """
+    if (!(${name} = Py_BuildValue("${format}", ${names}))) {
         return NULL;
     };
 """
 )
 
-FUNCTION = template(
+CEE_FUNCTION = template(
     """
-${prefix} ${return_type}
+${return_type}
 ${name}(${parameters})
 {
     ${body}
 }
 """
 )
+
+EXT_FUNCTION1 = template(
+    """
+${return_type}
+__folded_${name}(PyObject *module, PyObject *args)
+{
+    ${unpack}
+    ${body}
+}
+
+static PyObject *
+${name}(PyObject *module, PyObject *args)
+{
+    ${return_type} __folded_${name}_result = __folded_${name}(module, args);
+    PyObject * ${ret};
+    ${pack}
+    Py_INCREF(${ret});
+    return ${ret};
+}
+""")
+
+
+EXT_FUNCTION_MULTI = template(
+    """
+#define return(...) return ${name}_result(__VA_ARGS__);
+
+static PyObject *
+${name}_result(${decl}) {
+    return Py_BuildValue("${format}", $names);
+}
+
+static PyObject *
+${name}(PyObject *module, PyObject *args)
+{
+    ${unpack}
+    ${body}
+}
+#undef return
+""")
+
 
 CAPTURE = template(
     """
@@ -89,8 +160,7 @@ ${name}(${in_decl}, ${out_decl}) {
 METHOD_TABLE = template(
     """
 static PyMethodDef ${name}[] = {
-    ${methods},
-    {NULL, NULL, 0, NULL}
+    ${methods}{NULL, NULL, 0, NULL}
 };
 """
 )
@@ -108,7 +178,6 @@ static struct PyModuleDef $module = {
 """
 )
 
-
 MODULE_INIT = template(
     """
 PyMODINIT_FUNC
@@ -116,6 +185,7 @@ PyInit_${name}(void)
 {
     PyObject* ${name};
     $name = PyModule_Create(&${module});
+
     $error = PyErr_NewException("${name}.error", NULL, NULL);
     Py_XINCREF(${error});
     if (PyModule_AddObject(${name}, "error", ${error}) < 0) {
@@ -124,10 +194,43 @@ PyInit_${name}(void)
         Py_DECREF(${name});
         return NULL;
     };
+
     return ${name};
 };
 """
 )
+
+MODULE_INIT_WITH_REVISION = template(
+    """
+PyMODINIT_FUNC
+PyInit_${name}(void)
+{
+    PyObject* ${name};
+    $name = PyModule_Create(&${module});
+
+    $error = PyErr_NewException("${name}.error", NULL, NULL);
+    Py_XINCREF(${error});
+    if (PyModule_AddObject(${name}, "error", ${error}) < 0) {
+        Py_XDECREF(${error});
+        Py_CLEAR(${error});
+        Py_DECREF(${name});
+        return NULL;
+    };
+
+    PyObject * revision = PyLong_FromLong(${revision});
+    Py_XINCREF(revision);
+    if (PyModule_AddObject(${name}, "cexi_revision", revision) < 0) {
+        Py_XDECREF(revision);
+        Py_CLEAR(revision);
+        Py_DECREF(${name});
+        return NULL;
+    };
+
+    return ${name};
+};
+"""
+)
+
 
 MODULE_CODE = template(
     """

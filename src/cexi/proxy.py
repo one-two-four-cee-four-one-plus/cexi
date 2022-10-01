@@ -1,13 +1,14 @@
 from importlib import import_module
 
 from .exceptions import CodeDiverged, NotInitialized
-from .utils import ensure_tuple
+from .misc import ensure_tuple
 
 
 class Proxy:
     def __init__(self, module, object):
         self.__module = module
         self.__object = object
+        self.o = object
 
     def __getattribute__(self, attr):
         try:
