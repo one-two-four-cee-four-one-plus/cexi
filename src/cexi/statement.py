@@ -175,3 +175,52 @@ class PyCallable(CeeCallable):
             decl=', '.join(' '.join(pair) for pair in zip(types, names))
         )
         return ret
+
+
+class Capture(PyCallable):
+    template = templates.CAPTURE
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.orig = self.name
+        self.name = self.capture = f"__capture_{self.orig}" f"_from_{self.module.name}"
+        self.captured = f"__captured_{self.orig}_from_{self.module.name}"
+
+    def get_context(self):
+        return dict(
+            decl=f"static PyObject* __captured_{self.orig}_from_{self.module.name} = NULL;",
+            name=self.name,
+            capture=self.captured,
+        )
+
+
+class Share(CeeCallable):
+    prefix = ""
+    template = templates.SHARE
+    format = mapping(TypeTable.py_to_format)
+
+    def __init__(self, obj, module, capture):
+        super().__init__(obj, module)
+        self.capture = capture
+
+    def get_context(self):
+        in_types, out_types = self.map(self.params.values()), self.map(self.returns)
+        in_names, out_names = self.params.keys(), generate_names(
+            len(self.returns), self.params.keys()
+        )
+        out_types = tuple(P.map(t) for t in out_types)
+        in_format = "".join(self.format(self.params.values()))
+        out_format = "".join(self.format(self.returns))
+        return dict(
+            name=self.name,
+            in_decl=zip_decl(in_types, in_names),
+            out_decl=zip_decl(out_types, out_names),
+            capture=self.capture.captured,
+            in_format=in_format,
+            in_params=", ".join(in_names),
+            out_format=out_format,
+            out_params=", ".join(out_names),
+        )
+
+    def proxy(self):
+        return proxy.ReverseProxy(self.module, self.obj, self.capture)

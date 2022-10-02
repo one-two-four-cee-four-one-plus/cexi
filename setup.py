@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="cexi",
-    version="0.0.2",
+    version="0.0.3",
     author="melvin kaye",
     author_email="one.two.four.cee.four.one.plus@gmail.com",
     description="Cee EXtensions Interpolation",

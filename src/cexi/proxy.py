@@ -11,11 +11,7 @@ class Proxy:
         self.o = object
 
     def __getattribute__(self, attr):
-        try:
-            module_name = object.__getattribute__(self, "_Proxy__module").name
-            module = import_module(module_name)
-        except ImportError:
-            raise NotInitialized(module_name) from None
+        module = object.__getattribute__(self, "_Proxy__module").module
         try:
             member_name = object.__getattribute__(self, "_Proxy__object").name
             obj = getattr(module, member_name)
@@ -32,57 +28,19 @@ class ReverseProxy:
         self.__module = module
         self.__object = object
         self.__capture = capture
-        self.__captured = False
 
     def __call__(self, *args, **kwargs):
         obj = object.__getattribute__(self, "_ReverseProxy__object")
         return obj(*args, **kwargs)
 
     def __getattribute__(self, attr):
-        if attr == "use":
+        if attr == "_cexi_capture_callback":
 
             def closure():
-                if object.__getattribute__(self, "_ReverseProxy__captured"):
-                    return
                 obj = object.__getattribute__(self, "_ReverseProxy__object")
                 capture = object.__getattribute__(self, "_ReverseProxy__capture")
-                module = import_module(capture.module.name)
+                module = capture.module.module
                 getattr(module, capture.capture)(ensure_tuple(obj))
-                self.__captured = True
-
             return closure
+
         return object.__getattribute__(self, attr)
-
-
-class DynamicProxy:
-    def __init__(self, module, object):
-        self.__module = module
-        self.__object = object
-        self.__replacement = None
-
-    def __getattribute__(self, attr):
-        if attr == "cee":
-            py = object.__getattribute__(self, "_DynamicProxy__module")._py
-            fun = object.__getattribute__(self, "_DynamicProxy__object")
-
-            def closure(func):
-                return py(func, fun.__name__)
-
-            return closure
-
-        replacement = object.__getattribute__(self, "_DynamicProxy__replacement")
-        if replacement:
-            return getattr(replacement, attr)
-
-        module = object.__getattribute__(self, "_DynamicProxy__module")
-        fun = object.__getattribute__(self, "_DynamicProxy__object")
-
-        if module._check():
-            module = import_module(module.name)
-            self.__replacement = getattr(module, fun.__name__)
-            return self.__getattribute__(attr)
-
-        return getattr(fun, attr)
-
-    def __call__(self, *args, **kwargs):
-        return self.__getattribute__("__call__")(*args, **kwargs)

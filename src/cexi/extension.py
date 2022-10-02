@@ -1,7 +1,7 @@
 from uuid import uuid4
 from pathlib import Path
 from textwrap import indent
-from functools import cached_property
+from functools import cached_property, partial
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from hashlib import blake2b
 
@@ -13,7 +13,7 @@ from .binary import Compiler, Loader
 
 
 class Extension:
-    def __init__(self, name: str, dir=None):
+    def __init__(self, name: str, dir=None, options=None):
         if set(name) - ALLOWED_CHARACTERS:
             raise IncorrectExtensionName(name)
 
@@ -23,8 +23,9 @@ class Extension:
             self.dir.mkdir(parents=True, exist_ok=True)
         else:
             self.dir = TemporaryDirectory()
+        self.options = options
         self.code = []
-        self.reverses = []
+        self.shared = []
 
         self.__capitalized = self.name.capitalize()
         self.__error_name = f"{self.__capitalized}Error"
@@ -54,6 +55,17 @@ class Extension:
         cexi_fun = statement.PyCallable(fun, self)
         self.code.append(cexi_fun)
         return cexi_fun.proxy()
+
+    def share(self, fun):
+        fun, orig = partial(fun, None), fun
+        fun.__name__ = orig.__name__
+        capture = statement.Capture(fun, self)
+        reverse = statement.Share(fun, self, capture)
+        self.code.append(capture)
+        self.code.append(reverse)
+        proxy = reverse.proxy()
+        self.shared.append(proxy)
+        return fun
 
     ###########
     # codegen #
@@ -137,26 +149,30 @@ class Extension:
         with NamedTemporaryFile(dir=dir, mode='wt', suffix='.c') as source:
             Compiler().compile_cexi_extension(self, source, dir)
 
+    def load_shared(self):
+        for fun in self.shared:
+            fun._cexi_capture_callback()
+
     def load(self):
         dir = Path(self.dir.name) if isinstance(self.dir, TemporaryDirectory) else self.dir
         self.module = Loader().load_cexi_extension(self, dir)
         if isinstance(self.dir, TemporaryDirectory):
             self.dir.cleanup()
-
-    def is_compilation_required(self):
-        return isinstance(self.dir, TemporaryDirectory)
+        self.load_shared()
 
     def is_recompilation_required(self):
-        return self.module.cexi_revision != self.revision if self.module else self.is_compilation_required()
+        return self.module.cexi_revision != self.get_revision() if self.module else self.is_compilation_required()
 
     def prepare(self):
         if self.module:
             return
 
-        if self.is_compilation_required():
-            self.compile()
-        self.load()
-
-        if self.is_recompilation_required():
+        try:
+            self.load()
+        except ImportError:
             self.compile()
             self.load()
+        else:
+            if self.is_recompilation_required():
+                self.compile()
+                self.load()

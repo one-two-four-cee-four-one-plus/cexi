@@ -5,22 +5,6 @@ def template(text):
     return Template(text.strip())
 
 
-SETTINGS_MODULE = template("""
-from pathlib import Path
-
-name = "${name}"
-root = Path(__file__).parent.resolve()
-uuid = "${uuid}"
-""")
-
-
-NEW_EXTENSION = template("""
-from cexi import Extension
-
-${name} = Extension("${name}")
-""")
-
-
 MANDATORY_HEADER = """
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
@@ -28,16 +12,6 @@ MANDATORY_HEADER = """
 
 
 ERROR = template("static PyObject* ${error};")
-
-
-# UNPACK = template(
-#     """
-#     ${decl}
-#     if (!PyArg_ParseTuple(${name}, "${format}", ${names})) {
-#         return NULL;
-#     };
-# """
-# )
 
 UNPACK = template(
     """
@@ -48,9 +22,7 @@ UNPACK = template(
 
 PACK = template(
     """
-    if (!(${name} = Py_BuildValue("${format}", ${names}))) {
-        return NULL;
-    };
+    ${name} = Py_BuildValue("${format}", ${names});
 """
 )
 
@@ -87,7 +59,7 @@ ${name}(PyObject *module, PyObject *args)
 
 EXT_FUNCTION_MULTI = template(
     """
-#define return(...) return ${name}_result(__VA_ARGS__);
+#define return(...) return ${name}_result(__VA_ARGS__)
 
 static PyObject *
 ${name}_result(${decl}) {
@@ -102,59 +74,6 @@ ${name}(PyObject *module, PyObject *args)
 }
 #undef return
 """)
-
-
-CAPTURE = template(
-    """
-${decl}
-static PyObject*
-${name}(PyObject *__whatever, PyObject *args)
-{
-    if (${capture}) {
-        Py_INCREF(Py_None);
-        return Py_None;
-    };
-
-    PyObject* temp;
-
-    if (!PyArg_ParseTuple(args, "O:set_callback", &temp)) {
-        PyErr_SetString(PyExc_ImportError, "cannot capture python function");
-        return NULL;
-    }
-
-    if (!PyCallable_Check(temp)) {
-        PyErr_SetString(PyExc_TypeError, "parameter must be callable");
-        return NULL;
-    };
-
-    Py_XINCREF(temp);
-    ${capture} = temp;
-
-    Py_INCREF(Py_None);
-    return Py_None;
-};
-"""
-)
-
-REVERSE = template(
-    """
-int
-${name}(${in_decl}, ${out_decl}) {
-    if (!${capture})
-        return 1;
-
-    PyObject *result = NULL;
-
-    if (!(result = PyObject_CallFunction(${capture}, "${in_format}", ${in_params})))
-        return 2;
-
-    if (!PyArg_ParseTuple(result, "${out_format}", ${out_params}))
-        return 3;
-
-    return 0;
-}
-"""
-)
 
 
 METHOD_TABLE = template(
@@ -231,6 +150,48 @@ PyInit_${name}(void)
 """
 )
 
+CAPTURE = template(
+    """
+${decl}
+static PyObject*
+${name}(PyObject *__whatever, PyObject *args)
+{
+    if (${capture}) {
+        Py_INCREF(Py_None);
+        return Py_None;
+    };
+    PyObject* temp;
+    if (!PyArg_ParseTuple(args, "O:set_callback", &temp)) {
+        PyErr_SetString(PyExc_ImportError, "cannot capture python function");
+        return NULL;
+    }
+    if (!PyCallable_Check(temp)) {
+        PyErr_SetString(PyExc_TypeError, "parameter must be callable");
+        return NULL;
+    };
+    Py_XINCREF(temp);
+    ${capture} = temp;
+    Py_INCREF(Py_None);
+    return Py_None;
+};
+"""
+)
+
+SHARE = template(
+    """
+int
+${name}(${in_decl}, ${out_decl}) {
+    if (!${capture})
+        return 1;
+    PyObject *result = NULL;
+    if (!(result = PyObject_CallFunction(${capture}, "${in_format}", ${in_params})))
+        return 2;
+    if (!PyArg_ParseTuple(result, "${out_format}", ${out_params}))
+        return 3;
+    return 0;
+}
+"""
+)
 
 MODULE_CODE = template(
     """

@@ -17,6 +17,10 @@ class Compiler(UnixCCompiler):
         extra_preargs = ["-fPIC"]
         extra_postargs = []
 
+        if options := extension.options:
+            if flags := options.get('flags'):
+                extra_preargs.extend(flags)
+
         origin = Path().absolute()
         try:
             chdir(directory)
@@ -38,6 +42,4 @@ class Loader:
         )
         loader = ExtensionFileLoader(extension.name, path.join(directory, libfile))
         module = loader.load_module()
-        for reverse in extension.reverses:
-            reverse.use()
         return module
