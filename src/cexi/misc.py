@@ -52,7 +52,7 @@ def escape(content):
 def mapping(d):
     @staticmethod
     def func(v):
-        ret = itemgetter(*v)(d)
+        ret = itemgetter(*v)(d) if v else tuple()
         if isinstance(ret, str):
             return (ret,)
         return ret

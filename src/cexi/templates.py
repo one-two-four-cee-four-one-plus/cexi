@@ -193,6 +193,22 @@ ${name}(${in_decl}, ${out_decl}) {
 """
 )
 
+SHARE_NO_ARGS = template(
+    """
+int
+${name}(${out_decl}) {
+    if (!${capture})
+        return 1;
+    PyObject *result = NULL;
+    if (!(result = PyObject_CallFunction(${capture}, NULL)))
+        return 2;
+    if (!PyArg_ParseTuple(result, "${out_format}", ${out_params}))
+        return 3;
+    return 0;
+}
+"""
+)
+
 MODULE_CODE = template(
     """
 $header

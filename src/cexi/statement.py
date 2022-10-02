@@ -196,12 +196,18 @@ class Capture(PyCallable):
 
 class Share(CeeCallable):
     prefix = ""
-    template = templates.SHARE
     format = mapping(TypeTable.py_to_format)
 
     def __init__(self, obj, module, capture):
         super().__init__(obj, module)
         self.capture = capture
+
+    @cached_property
+    def template(self):
+        if self.params:
+            return templates.SHARE
+        else:
+            return templates.SHARE_NO_ARGS
 
     def get_context(self):
         in_types, out_types = self.map(self.params.values()), self.map(self.returns)
